@@ -26,11 +26,11 @@ class SignalRoom(commands.Cog):
         self.handle_signals.start()
 
     # Runs before bot closes
-    def cog_unload(self):
+    async def cog_unload(self):
         self.handle_signals.cancel()
 
         if self.tradelocker:
-            self.tradelocker.close()
+            await self.tradelocker.close()
 
     # Returns removed keys (closed positions)
     def _find_removed_keys(self, new_positions: dict[str, Position]):
@@ -155,8 +155,9 @@ class SignalRoom(commands.Cog):
 
     @tasks.loop(seconds=5)
     async def handle_signals(self):
+        print("Signal Loop Running...")
         positions = await self.tradelocker.get_positions()
-
+        print(f"Positions returned: {positions}")
         if positions is None:
             return
 
@@ -179,3 +180,6 @@ class SignalRoom(commands.Cog):
         await self._handle_pending_closes()
 
         self.current_positions = new_positions
+
+async def setup(bot):
+    await bot.add_cog(SignalRoom(bot))

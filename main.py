@@ -3,7 +3,8 @@ from discord.ext import commands
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+
+load_dotenv(".env.local")
 
 def get_discord_token():
     token = os.getenv("DISCORD_TOKEN")

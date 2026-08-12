@@ -6,10 +6,10 @@ import os
 from dotenv import load_dotenv
 
 # TradeLocker Account Constants (Change Later to allow discord embedded to choose account)
-ACCOUNT_NUM = 0
+ACCOUNT_NUM = 1
 ACCOUNT_TYPE = "live"
 
-load_dotenv()
+load_dotenv(".env.local")
 
 class TradeLockerClient:
 
@@ -67,6 +67,16 @@ class TradeLockerClient:
 
         try:
             async with self.__http_session.request(method, url, headers=headers, json=json) as r:
+                if r.status == 429:
+                    retry_after = r.headers.get("Retry-After")
+
+                    print(
+                        f"Rate limited: {endpoint} "
+                        f"Retry-After: {retry_after}"
+                    )
+
+                    return None
+
                 r.raise_for_status()
 
                 if r.status == 204:

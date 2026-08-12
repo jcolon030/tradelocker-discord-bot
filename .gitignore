@@ -1,2 +1,7 @@
+# Enviroment Variables
 .env*
 !.env.example
+
+# Python Cache
+__pycache__/
+*.py[cod]
