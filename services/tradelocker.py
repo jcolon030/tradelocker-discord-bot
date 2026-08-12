@@ -5,7 +5,7 @@ import ssl
 import os
 from dotenv import load_dotenv
 
-load_dotenv(".env.local")
+load_dotenv()
 
 # Pulls account type from .env.local
 def get_account_type():
@@ -39,16 +39,17 @@ class TradeLockerClient:
 
     # Async class initialization
     @classmethod
-    async def create(cls):
+    async def create(cls, set_account=True):
         client = cls()
 
         if not await client.login():
             await client.close()
             return None
 
-        if not await client.set_account_details():
-            await client.close()
-            return None
+        if set_account:
+            if not await client.set_account_details():
+                await client.close()
+                return None
 
         return client
 
@@ -233,18 +234,26 @@ class TradeLockerClient:
 
         return True
 
-    # Sets account details for class
-    async def set_account_details(self):
+    async def get_accounts(self):
         data = await self._request(
             "GET",
             "/auth/jwt/all-accounts",
             account_required=False
-        )
+        ) 
 
         if data is None:
+            return 
+
+        return data["accounts"]
+
+    # Sets account details for class
+    async def set_account_details(self):
+        accounts = await self.get_accounts()
+
+        if accounts is None:
             return False
 
-        self.__account_details = data["accounts"][get_account_num()]
+        self.__account_details = accounts[get_account_num()]
 
         return True
 

@@ -5,7 +5,7 @@ from models.position import Position
 import os
 from dotenv import load_dotenv
 
-load_dotenv(".env.local")
+load_dotenv()
 
 # Grabs signal room channel id from .env.local
 def get_channel_id():
@@ -126,8 +126,8 @@ class SignalRoom(commands.Cog):
     async def create_signal(self, order_type: str, position: Position, close_price: float | None = None):
 
         # This can be replaced with any logo you desire
-        image_path = "public/logo.png"
-        file = discord.File(image_path, "logo.png")
+        image_path = "public/default.png"
+        file = discord.File(image_path, "default.png")
 
         if order_type == "OPEN":
             embed = discord.Embed(title="🟢 Position Opened", color=discord.Color.green())
@@ -140,7 +140,7 @@ class SignalRoom(commands.Cog):
             embed.add_field(name="Take Profit", value=str(position.take_profit), inline=True)
             embed.add_field(name="Stop Loss", value=str(position.stop_loss), inline=True)
             embed.set_footer(text=f"Trade ID: {position.id[-4:]}")
-            embed.set_thumbnail(url="attachment://logo.png")
+            embed.set_thumbnail(url="attachment://default.png")
             embed.timestamp = discord.utils.utcnow()
 
         elif order_type == "UPDATE":
@@ -154,7 +154,7 @@ class SignalRoom(commands.Cog):
             embed.add_field(name="Take Profit", value=str(position.take_profit), inline=True)
             embed.add_field(name="Stop Loss", value=str(position.stop_loss), inline=True)
             embed.set_footer(text=f"Trade ID: {position.id[-4:]}")
-            embed.set_thumbnail(url="attachment://logo.png")
+            embed.set_thumbnail(url="attachment://default.png")
             embed.timestamp = discord.utils.utcnow()
 
         elif order_type == "CLOSE":
@@ -168,7 +168,7 @@ class SignalRoom(commands.Cog):
             embed.add_field(name="Take Profit", value=f"None", inline=True)
             embed.add_field(name="Stop Loss", value=f"None", inline=True)
             embed.set_footer(text=f"Trade ID: {position.id[-4:]}")
-            embed.set_thumbnail(url="attachment://logo.png")
+            embed.set_thumbnail(url="attachment://default.png")
             embed.timestamp = discord.utils.utcnow()
 
         channel = self.bot.get_channel(get_channel_id())
@@ -182,9 +182,7 @@ class SignalRoom(commands.Cog):
     # Main Signal Loop, Handles all types of positions
     @tasks.loop(seconds=2)
     async def handle_signals(self):
-        print("Signal Loop Running...") # Used for visualization
         positions = await self.tradelocker.get_positions()
-        print(f"Positions returned: {positions}") # Used for visualization
 
         if positions is None:
             return
