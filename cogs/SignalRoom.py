@@ -81,11 +81,16 @@ class SignalRoom(commands.Cog):
         if not self.pending_closes:
             return
 
-        completed = []
+        history = await self.tradelocker.get_orders_history()
+
+        if history is None:
+            return
+
+        completed: list[str] = []
 
         for position_id, position in self.pending_closes.items():
 
-            close_price = await self.tradelocker.get_close_price(position_id)
+            close_price = self.tradelocker.find_close_price(history, position_id)
 
             if close_price is None:
                 continue
@@ -154,7 +159,6 @@ class SignalRoom(commands.Cog):
             return
         
         await channel.send(embed=embed, file=file)
-            
 
     @tasks.loop(seconds=2)
     async def handle_signals(self):
@@ -183,6 +187,16 @@ class SignalRoom(commands.Cog):
         await self._handle_pending_closes()
 
         self.current_positions = new_positions
+
+    # Makes sure bot is ready before loop starts (safety precaution)
+    @handle_signals.before_loop
+    async def before_handle_signals(self):
+        await self.bot.wait_until_ready()
+
+    # Gives info for any hanging errors/crashes
+    @handle_signals.error
+    async def handle_signals_error(self, error):
+        print(f"Signal loop error: {type(error).__name__}: {error}")
 
 async def setup(bot):
     await bot.add_cog(SignalRoom(bot))

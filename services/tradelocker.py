@@ -287,7 +287,7 @@ class TradeLockerClient:
 
         return data["d"]["orders"]
 
-    async def get_close_price(self, position_id: str):
+    async def get_orders_history(self):
         data = await self._request(
             "GET",
             f"/trade/accounts/{self._get_account_id()}/ordersHistory"
@@ -296,8 +296,9 @@ class TradeLockerClient:
         if data is None:
             return None
 
-        history = data["d"]["ordersHistory"]
+        return data["d"]["ordersHistory"]
 
+    def find_close_price(self, history, position_id: str):
         for order in history:
             if len(order) <= 16:
                 continue
