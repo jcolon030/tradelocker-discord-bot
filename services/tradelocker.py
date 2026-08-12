@@ -5,15 +5,25 @@ import ssl
 import os
 from dotenv import load_dotenv
 
-# TradeLocker Account Constants (Change Later to allow discord embedded to choose account)
-ACCOUNT_NUM = 1
-ACCOUNT_TYPE = "live"
-
 load_dotenv(".env.local")
+
+# Pulls account type from .env.local
+def get_account_type():
+    account_type = os.getenv("TRADELOCKER_ACCOUNT_TYPE")
+    if not account_type:
+        raise RuntimeError("TRADELOCKER_ACCOUNT_TYPE is not set.")
+    return account_type
+
+# Pulls account num from .env.local
+def get_account_num():
+    account_num = os.getenv("TRADELOCKER_ACCOUNT_NUM")
+    if not account_num:
+        raise RuntimeError("TRADELOCKER_ACCOUNT_NUM is not set.")
+    return int(account_num)
 
 class TradeLockerClient:
 
-    __base_url = f"https://{ACCOUNT_TYPE}.tradelocker.com/backend-api"
+    __base_url = f"https://{get_account_type()}.tradelocker.com/backend-api"
     __base_headers = {
                 "accept": "application/json",
                 "content-type": "application/json",
@@ -63,9 +73,11 @@ class TradeLockerClient:
         if authenticated:
             headers["authorization"] = f"Bearer {self._get_access_token()}"
 
+        # If request requires TradeLocker Account Number
         if account_required:
             headers["accNum"] = str(self.__account_details["accNum"])
 
+        # Attempts connection to TradeLocker API
         try:
             async with self.__http_session.request(method, url, headers=headers, json=json) as r:
 
@@ -133,12 +145,14 @@ class TradeLockerClient:
             print(f"Request Error: {e}")
             return None
 
+    # Adds TP/SL to open positions
     def _apply_orders_to_positions(self, positions, orders):
         positions_by_id = {
             position.id: position
             for position in positions
         }
 
+        # Loops through open orders, looking for TP/SL
         for order in orders:
             position_id = str(order[16])
 
@@ -230,7 +244,7 @@ class TradeLockerClient:
         if data is None:
             return False
 
-        self.__account_details = data["accounts"][ACCOUNT_NUM]
+        self.__account_details = data["accounts"][get_account_num()]
 
         return True
 
@@ -255,6 +269,7 @@ class TradeLockerClient:
 
         return positions
 
+    # Fetches instrument name given open position
     async def fetch_instrument_name(self, position: Position):
         key = (position.instrument_id, position.route_id)
 
@@ -276,6 +291,7 @@ class TradeLockerClient:
 
         return name
 
+    # Gets open orders from TradeLocker API
     async def get_orders(self):
         data = await self._request(
             "GET",
@@ -287,6 +303,7 @@ class TradeLockerClient:
 
         return data["d"]["orders"]
 
+    # Gets order history from TradeLocker API
     async def get_orders_history(self):
         data = await self._request(
             "GET",
@@ -298,6 +315,7 @@ class TradeLockerClient:
 
         return data["d"]["ordersHistory"]
 
+    # Finds closing price for position given order history
     def find_close_price(self, history, position_id: str):
         for order in history:
             if len(order) <= 16:

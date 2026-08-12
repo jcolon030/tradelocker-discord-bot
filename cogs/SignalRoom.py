@@ -2,18 +2,26 @@ import discord
 from discord.ext import commands, tasks
 from services.tradelocker import TradeLockerClient
 from models.position import Position
+import os
+from dotenv import load_dotenv
 
-# Cog Constants (Change as needed)
-SIGNAL_ROOM_CHANNEL_ID = 1382717358799323146
+load_dotenv(".env.local")
+
+# Grabs signal room channel id from .env.local
+def get_channel_id():
+    signal_room_channel_id = os.getenv("SIGNAL_ROOM_CHANNEL_ID")
+    if not signal_room_channel_id:
+        raise RuntimeError("SIGNAL_ROOM_CHANNEL_ID is not set.")
+    return int(signal_room_channel_id)
 
 class SignalRoom(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
-        self.bot = bot
-        self.tradelocker = None
-        self.current_positions: dict[str, Position] = {}
-        self.pending_closes: dict[str, Position] = {}
-        self.positions_initialized = False
+        self.bot = bot # Holds discord bot client
+        self.tradelocker = None # Holds TradeLocker Client Class
+        self.current_positions: dict[str, Position] = {} # Holds all open positions
+        self.pending_closes: dict[str, Position] = {} # Holds any closed positions that have not been processed
+        self.positions_initialized = False # Used for first position snapshot
 
     # Runs when cogs are initialized
     async def cog_load(self):
@@ -44,6 +52,7 @@ class SignalRoom(commands.Cog):
     def _find_common_keys(self, new_positions: dict[str, Position]):
         return new_positions.keys() & self.current_positions.keys()
 
+    # Handles opened positions
     async def _handle_opened_positions(self, opened_ids, new_positions: dict[str, Position]):
         for position_id in opened_ids:
             position = new_positions[position_id]
@@ -52,6 +61,7 @@ class SignalRoom(commands.Cog):
 
             await self.create_signal("OPEN", position)
 
+    # Handles any closed positions (wrapper function)
     async def _handle_closed_positions(self, closed_ids):
         for position_id in closed_ids:
             position = self.current_positions[position_id]
@@ -60,12 +70,15 @@ class SignalRoom(commands.Cog):
 
             self.pending_closes[position_id] = position
 
+    # Handles any position is updated after position creation
     async def _handle_updated_positions(self, common_ids, new_positions: dict[str, Position]):
+        # Loops through positions with new data
         for position_id in common_ids:
 
             old_position = self.current_positions[position_id]
             new_position = new_positions[position_id]
 
+            # Checks for updated take profit or stop loss
             if (old_position.take_profit != new_position.take_profit 
                 or 
                 old_position.stop_loss != new_position.stop_loss):
@@ -77,17 +90,20 @@ class SignalRoom(commands.Cog):
                     new_position
                 )
 
+    # Handles closed positions which may have not updated on Tradelocker during position close
     async def _handle_pending_closes(self):
         if not self.pending_closes:
             return
 
-        history = await self.tradelocker.get_orders_history()
+        history = await self.tradelocker.get_orders_history() # Fetches history for all past orders
 
+        # Confirms history is not empty
         if history is None:
             return
 
         completed: list[str] = []
 
+        # Loops through pending closes and checks it with order history
         for position_id, position in self.pending_closes.items():
 
             close_price = self.tradelocker.find_close_price(history, position_id)
@@ -106,7 +122,10 @@ class SignalRoom(commands.Cog):
         for position_id in completed:
             del self.pending_closes[position_id]
 
+    # Embedded Message Creator, requires order_tupe, position, and close_price (if applicable)
     async def create_signal(self, order_type: str, position: Position, close_price: float | None = None):
+
+        # This can be replaced with any logo you desire
         image_path = "public/logo.png"
         file = discord.File(image_path, "logo.png")
 
@@ -152,7 +171,7 @@ class SignalRoom(commands.Cog):
             embed.set_thumbnail(url="attachment://logo.png")
             embed.timestamp = discord.utils.utcnow()
 
-        channel = self.bot.get_channel(SIGNAL_ROOM_CHANNEL_ID)
+        channel = self.bot.get_channel(get_channel_id())
 
         if channel is None:
             print("Signal room channel not found.")
@@ -160,11 +179,13 @@ class SignalRoom(commands.Cog):
         
         await channel.send(embed=embed, file=file)
 
+    # Main Signal Loop, Handles all types of positions
     @tasks.loop(seconds=2)
     async def handle_signals(self):
-        print("Signal Loop Running...")
+        print("Signal Loop Running...") # Used for visualization
         positions = await self.tradelocker.get_positions()
-        print(f"Positions returned: {positions}")
+        print(f"Positions returned: {positions}") # Used for visualization
+
         if positions is None:
             return
 
