@@ -21,9 +21,11 @@ class TradeLockerClient:
 
     # Initializes class variables
     def __init__(self):
-        self.__tokens = {}
-        self.__http_session = self._make_session()
-        self.__account_details = {}
+
+        self.__tokens = {} # TradeLocker API Tokens
+        self.__http_session = self._make_session() # AIOHTTP Session
+        self.__account_details = {} # TradeLocker Account Details
+        self.__instruments = {} # Instrument Caching
 
     # Async class initialization
     @classmethod
@@ -53,7 +55,7 @@ class TradeLockerClient:
         return aiohttp.ClientSession(connector=connector, timeout=timeout)
 
     # Helper function for making requests to TradeLocker API
-    async def _request(self, method, endpoint, *, json=None, authenticated=True, account_required=True):
+    async def _request(self, method, endpoint, *, json=None, authenticated=True, account_required=True, retry=True):
         url = f"{self.__base_url}{endpoint}"
 
         headers = self.__base_headers.copy()
@@ -67,6 +69,27 @@ class TradeLockerClient:
 
         try:
             async with self.__http_session.request(method, url, headers=headers, json=json) as r:
+
+                # If access key expired, allows one retry after token refresh
+                if r.status == 401 and authenticated and retry:
+                    print("Access token expired. Refreshing...")
+
+                    # Verifies token is refreshed
+                    if not await self.refresh_token():
+                        print("Failed to refresh access token.")
+                        return None
+
+                    # Recreates request
+                    return await self._request(
+                        method, 
+                        endpoint, 
+                        json=json, 
+                        authenticated=authenticated, 
+                        account_required=account_required, 
+                        retry=False
+                    )
+
+                # Rate Limit Error
                 if r.status == 429:
                     retry_after = r.headers.get("Retry-After")
 
@@ -215,6 +238,12 @@ class TradeLockerClient:
         return positions
 
     async def fetch_instrument_name(self, position: Position):
+        key = (position.instrument_id, position.route_id)
+
+        # Checks cache for instrument name
+        if key in self.__instruments:
+            return self.__instruments[key]
+
         data = await self._request(
             "GET",
             f"/trade/instruments/{position.instrument_id}?routeId={position.route_id}"
@@ -223,7 +252,11 @@ class TradeLockerClient:
         if data is None:
             return None
 
-        return data["d"]["name"]
+        name = data["d"]["name"]
+
+        self.__instruments[key] = name # Caches instrument name
+
+        return name
 
     async def get_orders(self):
         data = await self._request(

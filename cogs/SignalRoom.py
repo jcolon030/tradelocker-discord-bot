@@ -78,6 +78,9 @@ class SignalRoom(commands.Cog):
                 )
 
     async def _handle_pending_closes(self):
+        if not self.pending_closes:
+            return
+
         completed = []
 
         for position_id, position in self.pending_closes.items():
@@ -107,7 +110,7 @@ class SignalRoom(commands.Cog):
             symbol = await self.tradelocker.fetch_instrument_name(position)
 
             embed.add_field(name="Instrument", value=symbol, inline=True)
-            embed.add_field(name="Market Order", value=position.side, inline=True)
+            embed.add_field(name="Market Order", value=position.side.capitalize(), inline=True)
             embed.add_field(name="\u200b", value="\u200b", inline=True)
             embed.add_field(name="Entry Price", value=str(position.entry_price), inline=True)
             embed.add_field(name="Take Profit", value=str(position.take_profit), inline=True)
@@ -121,7 +124,7 @@ class SignalRoom(commands.Cog):
             symbol = await self.tradelocker.fetch_instrument_name(position)
 
             embed.add_field(name="Instrument", value=symbol, inline=True)
-            embed.add_field(name="Market Order", value=position.side, inline=True)
+            embed.add_field(name="Market Order", value=position.side.capitalize(), inline=True)
             embed.add_field(name="\u200b", value="\u200b", inline=True)
             embed.add_field(name="Entry Price", value=str(position.entry_price), inline=True)
             embed.add_field(name="Take Profit", value=str(position.take_profit), inline=True)
@@ -135,7 +138,7 @@ class SignalRoom(commands.Cog):
             symbol = await self.tradelocker.fetch_instrument_name(position)
 
             embed.add_field(name="Instrument", value=symbol, inline=True)
-            embed.add_field(name="Market Order", value=position.side, inline=True)
+            embed.add_field(name="Market Order", value=position.side.capitalize(), inline=True)
             embed.add_field(name="\u200b", value="\u200b", inline=True)
             embed.add_field(name="Closing Price", value=close_price, inline=True)
             embed.add_field(name="Take Profit", value=f"None", inline=True)
@@ -153,7 +156,7 @@ class SignalRoom(commands.Cog):
         await channel.send(embed=embed, file=file)
             
 
-    @tasks.loop(seconds=5)
+    @tasks.loop(seconds=2)
     async def handle_signals(self):
         print("Signal Loop Running...")
         positions = await self.tradelocker.get_positions()
