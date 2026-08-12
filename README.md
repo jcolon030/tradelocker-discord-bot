@@ -112,7 +112,7 @@ python list_accounts.py
 
 This will display the TradeLocker accounts available to you and their corresponding account numbers.
 
-Set the account you want to the bot to monitor in your `.env` file:
+Set the account you want the bot to monitor in your `.env` file:
 
 ```env
 TRADELOCKER_ACCOUNT_NUM=0
