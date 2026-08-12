@@ -180,7 +180,7 @@ class SignalRoom(commands.Cog):
         await channel.send(embed=embed, file=file)
 
     # Main Signal Loop, Handles all types of positions
-    @tasks.loop(seconds=2)
+    @tasks.loop(seconds=3)
     async def handle_signals(self):
         positions = await self.tradelocker.get_positions()
 
