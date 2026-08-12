@@ -33,11 +33,11 @@ class TradeLockerClient:
         client = cls()
 
         if not await client.login():
-            await client._close()
+            await client.close()
             return None
 
         if not await client.set_account_details():
-            await client._close()
+            await client.close()
             return None
 
         return client
@@ -49,7 +49,6 @@ class TradeLockerClient:
         ssl_ctx = ssl.create_default_context()
         connector = aiohttp.TCPConnector(
             ssl=ssl_ctx,
-            force_close=True,
             limit=20
         )
         return aiohttp.ClientSession(connector=connector, timeout=timeout)
@@ -106,6 +105,25 @@ class TradeLockerClient:
                     return
 
                 return await r.json()
+
+        # Connection Timeout
+        except (aiohttp.ServerTimeoutError, aiohttp.ClientConnectionError) as e:
+            print(f"Connection Error: {e}")
+
+            if retry:
+                await asyncio.sleep(1)
+
+                # Recreates request
+                return await self._request(
+                    method, 
+                    endpoint, 
+                    json=json, 
+                    authenticated=authenticated, 
+                    account_required=account_required, 
+                    retry=False
+                )
+
+            return None
 
         except aiohttp.ClientResponseError as e:
             print(f"HTTP Error: {e.status} - {e.message}")
