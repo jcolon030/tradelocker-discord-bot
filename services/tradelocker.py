@@ -53,14 +53,17 @@ class TradeLockerClient:
         return aiohttp.ClientSession(connector=connector, timeout=timeout)
 
     # Helper function for making requests to TradeLocker API
-    async def _request(self, method, endpoint, *, json=None, autheticated=True):
+    async def _request(self, method, endpoint, *, json=None, authenticated=True, account_required=True):
         url = f"{self.__base_url}{endpoint}"
 
         headers = self.__base_headers.copy()
 
         # If request requires TradeLocker Access Token
-        if autheticated:
+        if authenticated:
             headers["authorization"] = f"Bearer {self._get_access_token()}"
+
+        if account_required:
+            headers["accNum"] = str(self.__account_details["accNum"])
 
         try:
             async with self.__http_session.request(method, url, headers=headers, json=json) as r:
@@ -79,14 +82,42 @@ class TradeLockerClient:
             print(f"Request Error: {e}")
             return None
 
+    def _apply_orders_to_positions(self, positions, orders):
+        positions_by_id = {
+            position.id: position
+            for position in positions
+        }
+
+        for order in orders:
+            position_id = str(order[16])
+
+            position = positions_by_id.get(position_id)
+
+            if position is None:
+                continue
+
+            order_type = order[5]
+
+            if order_type == "limit":
+                position.take_profit = (
+                    float(order[9])
+                    if order[9] is not None
+                    else None
+                )
+
+            elif order_type == "stop":
+                position.stop_loss = (
+                    float(order[10])
+                    if order[10] is not None
+                    else None
+                )
+
     # Returns access tokens
     def _get_access_token(self):
         return self.__tokens["accessToken"]
 
-    # Closes aiohttp session
-    async def _close(self):
-        await self.__http_session.close()
-        
+    def _get_account_id(self):
+        return self.__account_details["id"]
 
     # PUBLIC FUNCTIONS
     # Attempts Login into TradeLocker API, Saves tokens Locally
@@ -100,9 +131,9 @@ class TradeLockerClient:
         data = await self._request(
             "POST",
             "/auth/jwt/token",
-            headers=self.__base_headers,
             json=payload,
-            autheticated=False
+            authenticated=False,
+            account_required=False
         )
 
         if data is None:
@@ -123,9 +154,9 @@ class TradeLockerClient:
         data = await self._request(
             "POST",
             "/auth/jwt/refresh",
-            headers=self.__base_headers,
             json=payload,
-            autheticated=False
+            authenticated=False,
+            account_required=False
         )
 
         if data is None:
@@ -141,7 +172,8 @@ class TradeLockerClient:
     async def set_account_details(self):
         data = await self._request(
             "GET",
-            "/auth/jwt/all-accounts"
+            "/auth/jwt/all-accounts",
+            account_required=False
         )
 
         if data is None:
@@ -153,11 +185,72 @@ class TradeLockerClient:
 
     # Gets open positions for given account
     async def get_positions(self):
-        account_id = self.__account_details["id"]
-
-        data = await self._request(
+        position_data = await self._request(
             "GET",
-            f"/trade/accounts/{account_id}/positions"
+            f"/trade/accounts/{self._get_account_id()}/positions"
         )
 
-        return [Position.convert_to_position(row) for row in data["d"]["positions"]]
+        if position_data is None:
+            return None
+
+        order_data = await self.get_orders()
+
+        if order_data is None:
+            return None
+
+        positions = [Position.convert_to_position(row) for row in position_data["d"]["positions"]]
+
+        self._apply_orders_to_positions(positions, order_data)
+
+        return positions
+
+    async def fetch_instrument_name(self, position: Position):
+        data = await self._request(
+            "GET",
+            f"/trade/instruments/{position.instrument_id}?routeId={position.route_id}"
+        )
+
+        if data is None:
+            return None
+
+        return data["d"]["name"]
+
+    async def get_orders(self):
+        data = await self._request(
+            "GET",
+            f"/trade/accounts/{self._get_account_id()}/orders"
+        )
+
+        if data is None:
+            return None
+
+        return data["d"]["orders"]
+
+    async def get_close_price(self, position_id: str):
+        data = await self._request(
+            "GET",
+            f"/trade/accounts/{self._get_account_id()}/ordersHistory"
+        )
+
+        if data is None:
+            return None
+
+        history = data["d"]["ordersHistory"]
+
+        for order in history:
+            if len(order) <= 16:
+                continue
+
+            if str(order[16]) != position_id:
+                continue
+
+            if order[9] is None:
+                return None
+
+            return float(order[9])
+        
+        return None
+
+    # Closes aiohttp session
+    async def close(self):
+        await self.__http_session.close()

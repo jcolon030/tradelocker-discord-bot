@@ -8,6 +8,8 @@ class Position:
     side: str
     quantity: float
     entry_price: float
+    take_profit: float | None = None
+    stop_loss: float | None = None
 
     @classmethod
     def convert_to_position(cls, data):
