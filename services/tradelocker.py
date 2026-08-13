@@ -4,6 +4,7 @@ import aiohttp
 import ssl
 import os
 from dotenv import load_dotenv
+import time
 
 load_dotenv()
 
@@ -37,6 +38,10 @@ class TradeLockerClient:
         self.__account_details = {} # TradeLocker Account Details
         self.__instruments = {} # Instrument Caching
 
+        self.__request_lock = asyncio.Lock()
+        self.__last_request = 0.0
+        self.__request_interval = 1.2
+
     # Async class initialization
     @classmethod
     async def create(cls, set_account=True):
@@ -64,44 +69,49 @@ class TradeLockerClient:
         )
         return aiohttp.ClientSession(connector=connector, timeout=timeout)
 
-    # Helper function for making requests to TradeLocker API
+    # Helper function for making requests to the TradeLocker API
     async def _request(self, method, endpoint, *, json=None, authenticated=True, account_required=True, retry=True):
-        url = f"{self.__base_url}{endpoint}"
 
+        url = f"{self.__base_url}{endpoint}"
         headers = self.__base_headers.copy()
 
-        # If request requires TradeLocker Access Token
+        # Adds access token if authentication is required
         if authenticated:
             headers["authorization"] = f"Bearer {self._get_access_token()}"
 
-        # If request requires TradeLocker Account Number
+        # Adds account number if the endpoint requires it
         if account_required:
             headers["accNum"] = str(self.__account_details["accNum"])
 
-        # Attempts connection to TradeLocker API
         try:
+            async with self.__request_lock:
+                elapsed = time.monotonic() - self.__last_request
+
+                if elapsed < self.__request_interval:
+                    await asyncio.sleep(self.__request_interval - elapsed)
+
+                self.__last_request = time.monotonic()
+
             async with self.__http_session.request(method, url, headers=headers, json=json) as r:
 
-                # If access key expired, allows one retry after token refresh
+                # Refreshes expired access token and retries the request once
                 if r.status == 401 and authenticated and retry:
                     print("Access token expired. Refreshing...")
 
-                    # Verifies token is refreshed
                     if not await self.refresh_token():
                         print("Failed to refresh access token.")
                         return None
 
-                    # Recreates request
                     return await self._request(
-                        method, 
-                        endpoint, 
-                        json=json, 
-                        authenticated=authenticated, 
-                        account_required=account_required, 
+                        method,
+                        endpoint,
+                        json=json,
+                        authenticated=authenticated,
+                        account_required=account_required,
                         retry=False
                     )
 
-                # Rate Limit Error
+                # Rate limit reached; allow the caller or polling loop to retry later
                 if r.status == 429:
                     retry_after = r.headers.get("Retry-After")
 
@@ -114,25 +124,24 @@ class TradeLockerClient:
 
                 r.raise_for_status()
 
+                # Successful response with no content
                 if r.status == 204:
-                    return
+                    return None
 
                 return await r.json()
 
-        # Connection Timeout
         except (aiohttp.ServerTimeoutError, aiohttp.ClientConnectionError) as e:
             print(f"Connection Error: {e}")
 
             if retry:
                 await asyncio.sleep(1)
 
-                # Recreates request
                 return await self._request(
-                    method, 
-                    endpoint, 
-                    json=json, 
-                    authenticated=authenticated, 
-                    account_required=account_required, 
+                    method,
+                    endpoint,
+                    json=json,
+                    authenticated=authenticated,
+                    account_required=account_required,
                     retry=False
                 )
 
@@ -267,12 +276,15 @@ class TradeLockerClient:
         if position_data is None:
             return None
 
+        positions = [Position.convert_to_position(row) for row in position_data["d"]["positions"]]
+
+        if not positions:
+            return positions
+
         order_data = await self.get_orders()
 
         if order_data is None:
             return None
-
-        positions = [Position.convert_to_position(row) for row in position_data["d"]["positions"]]
 
         self._apply_orders_to_positions(positions, order_data)
 
