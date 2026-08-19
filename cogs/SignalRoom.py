@@ -22,6 +22,7 @@ class SignalRoom(commands.Cog):
         self.current_positions: dict[str, Position] = {} # Holds all open positions
         self.pending_closes: dict[str, Position] = {} # Holds any closed positions that have not been processed
         self.positions_initialized = False # Used for first position snapshot
+        self.pending_empty_updates = set()
 
     # Runs when cogs are initialized
     async def cog_load(self):
@@ -64,6 +65,8 @@ class SignalRoom(commands.Cog):
     # Handles any closed positions (wrapper function)
     async def _handle_closed_positions(self, closed_ids):
         for position_id in closed_ids:
+            self.pending_empty_updates.discard(position_id)
+
             position = self.current_positions[position_id]
 
             print(f"Position Closed: {position.id}")
@@ -78,17 +81,41 @@ class SignalRoom(commands.Cog):
             old_position = self.current_positions[position_id]
             new_position = new_positions[position_id]
 
+            if position_id in self.pending_empty_updates:
+                if (new_position.take_profit is None and new_position.stop_loss is None):
+                    self.pending_empty_updates.discard(position_id)
+
+                    print(f"Position Updated: {position_id}")
+
+                    await self.create_signal(
+                        "UPDATE",
+                        new_position
+                    )
+
+                    continue
+
+                self.pending_empty_updates.discard(position_id)
+
             # Checks for updated take profit or stop loss
-            if (old_position.take_profit != new_position.take_profit 
-                or 
-                old_position.stop_loss != new_position.stop_loss):
+            changed = (
+                old_position.take_profit != new_position.take_profit
+                or old_position.stop_loss != new_position.stop_loss
+            )
 
-                print(f"Position Updated: {position_id}")
+            if not changed:
+                continue
 
-                await self.create_signal(
-                    "UPDATE",
-                    new_position
-                )
+            if (new_position.take_profit is None and new_position.stop_loss is None):
+                self.pending_empty_updates.add(position_id)
+                continue
+
+
+            print(f"Position Updated: {position_id}")
+            
+            await self.create_signal(
+                "UPDATE",
+                new_position
+            )
 
     # Handles closed positions which may have not updated on Tradelocker during position close
     async def _handle_pending_closes(self):

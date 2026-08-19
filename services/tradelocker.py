@@ -345,10 +345,13 @@ class TradeLockerClient:
             if str(order[16]) != position_id:
                 continue
 
-            if order[9] is None:
+            if str(order[6]) != "Filled":
+                continue
+
+            if order[8] is None:
                 return None
 
-            return float(order[9])
+            return float(order[8])
         
         return None
 
