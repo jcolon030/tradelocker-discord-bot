@@ -22,7 +22,7 @@ class SignalRoom(commands.Cog):
         self.current_positions: dict[str, Position] = {} # Holds all open positions
         self.pending_closes: dict[str, Position] = {} # Holds any closed positions that have not been processed
         self.positions_initialized = False # Used for first position snapshot
-        self.pending_empty_updates = set()
+        self.pending_empty_updates = set() # Used to track positions that have been updated but not closed
 
     # Runs when cogs are initialized
     async def cog_load(self):
@@ -81,6 +81,7 @@ class SignalRoom(commands.Cog):
             old_position = self.current_positions[position_id]
             new_position = new_positions[position_id]
 
+            # Checks if position has taken off TP/SL and the position is still open
             if position_id in self.pending_empty_updates:
                 if (new_position.take_profit is None and new_position.stop_loss is None):
                     self.pending_empty_updates.discard(position_id)
@@ -105,10 +106,10 @@ class SignalRoom(commands.Cog):
             if not changed:
                 continue
 
+            # Puts position removing its TP/SL into buffer to verify
             if (new_position.take_profit is None and new_position.stop_loss is None):
                 self.pending_empty_updates.add(position_id)
                 continue
-
 
             print(f"Position Updated: {position_id}")
             
