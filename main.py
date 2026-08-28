@@ -2,6 +2,8 @@ import discord
 from discord.ext import commands
 import os
 from dotenv import load_dotenv
+from services.tradelocker import TradeLockerClient
+from database.trade_repository import TradeRepository
 
 load_dotenv()
 
@@ -23,7 +25,13 @@ class TradeLockerBot(commands.Bot):
 
     # Loads Cogs
     async def setup_hook(self):
+        self.tradelocker = await TradeLockerClient.create()
+        self.trade_repository = TradeRepository()
+
+        await self.trade_repository.initialize()
+
         await self.load_extension(f"cogs.SignalRoom")
+        await self.load_extension(f"cogs.PointNotification")
         print("All Cogs Loaded")
 
     # Runs once bot is ready to start
@@ -40,6 +48,7 @@ class TradeLockerBot(commands.Bot):
 
     # Closes bot when code ends
     async def close(self):
+        await self.tradelocker.close()
         await super().close()
 
 if __name__ == "__main__":

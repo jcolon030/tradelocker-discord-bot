@@ -1,11 +1,16 @@
 import discord
 from discord.ext import commands, tasks
 from services.tradelocker import TradeLockerClient
+from database.trade_repository import TradeRepository
 from models.position import Position
 import os
 from dotenv import load_dotenv
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 load_dotenv()
+
+EASTERN = ZoneInfo("America/New_York")
 
 # Grabs signal room channel id from .env.local
 def get_channel_id():
@@ -18,7 +23,8 @@ class SignalRoom(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot # Holds discord bot client
-        self.tradelocker = None # Holds TradeLocker Client Class
+        self.tradelocker: TradeLockerClient = bot.tradelocker # Holds TradeLocker Client Class
+        self.trade_repository: TradeRepository = bot.trade_repository
         self.current_positions: dict[str, Position] = {} # Holds all open positions
         self.pending_closes: dict[str, Position] = {} # Holds any closed positions that have not been processed
         self.positions_initialized = False # Used for first position snapshot
@@ -26,20 +32,11 @@ class SignalRoom(commands.Cog):
 
     # Runs when cogs are initialized
     async def cog_load(self):
-        self.tradelocker = await TradeLockerClient.create()
-
-        if self.tradelocker is None:
-            print("Failed to initialize TradeLocker.")
-            return
-
         self.handle_signals.start()
 
     # Runs before bot closes
     async def cog_unload(self):
         self.handle_signals.cancel()
-
-        if self.tradelocker:
-            await self.tradelocker.close()
 
     # Returns removed keys (closed positions)
     def _find_removed_keys(self, new_positions: dict[str, Position]):
@@ -143,6 +140,21 @@ class SignalRoom(commands.Cog):
                 "CLOSE",
                 position,
                 close_price=close_price
+            )
+
+            if position.side == "buy":
+                price_change = close_price - position.entry_price
+            else:
+                price_change = position.entry_price - close_price
+
+            symbol = await self.tradelocker.fetch_instrument_name(position)
+
+            await self.trade_repository.save_trade(
+                position.id,
+                symbol,
+                price_change,
+                position.quantity,
+                datetime.now(EASTERN).isoformat()
             )
 
             completed.append(position_id)
