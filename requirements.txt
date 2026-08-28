@@ -4,5 +4,3 @@ asyncio
 aiohttp
 ssl
 python-dotenv
-aiosqlite
-tzdata
